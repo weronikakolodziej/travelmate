@@ -58,7 +58,7 @@ For full functionality, you'll need to [create a Reddit app](https://www.reddit.
 ```bash
 export REDDIT_CLIENT_ID="your_client_id"
 export REDDIT_CLIENT_SECRET="your_client_secret"
-export REDDIT_USER_AGENT="TravelMate Lite AI v1.0"
+export REDDIT_USER_AGENT="travelmate"
 ```
 
 Without these credentials, the app will run in demo mode with mock data for a few example cities.
