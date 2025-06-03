@@ -133,4 +133,4 @@ with gr.Blocks(css=css, title=title) as demo:
 
 if __name__ == "__main__":
     # Launch the app
-    demo.launch()
+    demo.launch(share=True)
