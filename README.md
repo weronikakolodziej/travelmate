@@ -51,7 +51,7 @@ pip install -r requirements.txt
 huggingface_cli login
 ```
 
-5. (Optional) Configure Reddit API credentials:
+5. Configure Reddit API credentials:
 
 For full functionality, you'll need to [create a Reddit app](https://www.reddit.com/prefs/apps) and set the following environment variables:
 
@@ -62,6 +62,18 @@ export REDDIT_USER_AGENT="travelmate"
 ```
 
 Without these credentials, the app will run in demo mode with mock data for a few example cities.
+
+6. 
+Before this will work, you'll need to:
+
+Go to the Google Cloud Console https://console.cloud.google.com/ 
+Create a new project or select an existing one
+Enable the following APIs:
+Maps JavaScript API
+Places API
+Create credentials (API key) for these APIs
+Replace YOUR_GOOGLE_MAPS_API_KEY in the .env file with your actual API key
+
 
 ## Usage
 

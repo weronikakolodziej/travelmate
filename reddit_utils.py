@@ -12,17 +12,22 @@ REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "TravelMate Lite AI v1.0")
 def initialize_reddit_api():
     """Initialize and return the Reddit API client"""
     try:
+        # Get credentials from environment variables
+        client_id = os.getenv("REDDIT_CLIENT_ID")
+        client_secret = os.getenv("REDDIT_CLIENT_SECRET")
+        user_agent = os.getenv("REDDIT_USER_AGENT", "TravelMate Lite AI v1.0")
+        
         # Check if credentials are set
-        if REDDIT_CLIENT_ID == "YOUR_CLIENT_ID" or REDDIT_CLIENT_SECRET == "YOUR_CLIENT_SECRET":
+        if not client_id or not client_secret or client_id == "YOUR_CLIENT_ID" or client_secret == "YOUR_CLIENT_SECRET":
             print("WARNING: Using demo mode with public data only. For full functionality, set Reddit API credentials.")
             # In demo mode, we'll return a mock client that will use publicly available data
             return MockRedditClient()
         
         # Initialize the real Reddit client
         reddit = praw.Reddit(
-            client_id=REDDIT_CLIENT_ID,
-            client_secret=REDDIT_CLIENT_SECRET,
-            user_agent=REDDIT_USER_AGENT,
+            client_id=client_id,
+            client_secret=client_secret,
+            user_agent=user_agent,
         )
         return reddit
     except Exception as e:
@@ -151,21 +156,28 @@ def fetch_reddit_data(city, interests, subreddits=["travel", "solotravel"], post
     """
     # Initialize Reddit API
     reddit = initialize_reddit_api()
+    print(f"Initialized Reddit API, searching for city: {city}, interests: {interests}")
     
     # Prepare search query
     query = f"{city} {interests}"
+    print(f"Search query: {query}")
     
     all_data = []
     
     # Search each subreddit
     for subreddit_name in subreddits:
         try:
+            print(f"\nSearching in r/{subreddit_name}...")
             subreddit = reddit.subreddit(subreddit_name)
             
             # Search for relevant posts
-            for post in subreddit.search(query, limit=post_limit, sort="relevance", time_filter="year"):
+            posts = list(subreddit.search(query, limit=post_limit, sort="relevance", time_filter="year"))
+            print(f"Found {len(posts)} posts in r/{subreddit_name}")
+            
+            for post in posts:
                 # Check if post is relevant
                 if is_relevant(post, city):
+                    print(f"Found relevant post: {getattr(post, 'title', '[Title unavailable]')}")
                     # Extract post data
                     post_data = {
                         "title": getattr(post, "title", "[Title unavailable]"),
@@ -185,11 +197,16 @@ def fetch_reddit_data(city, interests, subreddits=["travel", "solotravel"], post
                         post_data["comments"] = post["comments"][:3]
                     
                     all_data.append(post_data)
+                else:
+                    print(f"Skipping irrelevant post: {getattr(post, 'title', '[Title unavailable]')}")
         except Exception as e:
             print(f"Error fetching data from r/{subreddit_name}: {str(e)}")
     
+    print(f"\nTotal relevant posts found: {len(all_data)}")
+    
     # If we couldn't find relevant data
     if not all_data:
+        print("No relevant data found for the query")
         return ""
     
     # Format the data for the model

@@ -58,7 +58,7 @@ def process_request(city, interests, subreddits=["travel", "solotravel"], post_l
     
     # Fetch data from Reddit
     start_time = time.time()
-    status_msg = f"Searching Reddit for information about {city}..."
+    status_msg = f"🔍 Searching Reddit for information about {city}..."
     yield status_msg
     
     reddit_data = fetch_reddit_data(city, interests, subreddits, post_limit)
@@ -68,7 +68,13 @@ def process_request(city, interests, subreddits=["travel", "solotravel"], post_l
         return f"No relevant information found for {city} on Reddit. Please try another city or interests."
     
     # Generate recommendations using the model
-    status_msg += f"\nGenerating personalized recommendations... This may take a moment."
+    status_msg = f"""
+### Generation Progress:
+1. ✅ Reddit data collected
+2. 🔄 Analyzing data and generating recommendations...
+3. ⏳ Formatting response
+
+This may take a moment. Please wait..."""
     yield status_msg
     
     start_time = time.time()
@@ -84,7 +90,17 @@ Device: {torch.cuda.get_device_name(0) if cuda_available else "CPU"}
 </div>
 """
     
-    return recommendation + metrics
+    final_status = f"""
+### Generation Complete! ✨
+1. ✅ Reddit data collected
+2. ✅ Analysis and recommendations generated
+3. ✅ Response formatted
+
+{recommendation}
+
+{metrics}
+"""
+    return final_status
 
 # Define the Gradio interface
 with gr.Blocks(css=css, title=title) as demo:
@@ -111,11 +127,9 @@ with gr.Blocks(css=css, title=title) as demo:
         )
         post_limit = gr.Slider(minimum=3, maximum=10, value=5, step=1, label="Number of Reddit posts to analyze")
     
-    # Submit button
+    # Submit button and progress output
     submit_btn = gr.Button("Get Recommendations", variant="primary")
-    
-    # Output area
-    output = gr.Markdown(label="Recommendations")
+    output = gr.Markdown(label="Status and Recommendations")
     
     # Set up the submission action
     submit_btn.click(
