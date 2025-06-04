@@ -61,7 +61,7 @@ def process_request(city, interests, subreddits=["travel", "solotravel"], post_l
     status_msg = f"🔍 Searching Reddit for information about {city}..."
     yield status_msg
     
-    reddit_data = fetch_reddit_data(city, interests, subreddits, post_limit)
+    reddit_data, verified_places = fetch_reddit_data(city, interests, subreddits, post_limit)
     reddit_time = time.time() - start_time
     
     if not reddit_data:
@@ -70,7 +70,7 @@ def process_request(city, interests, subreddits=["travel", "solotravel"], post_l
     # Generate recommendations using the model
     status_msg = f"""
 ### Generation Progress:
-1. ✅ Reddit data collected
+1. ✅ Reddit data collected ({len(verified_places)} places verified)
 2. 🔄 Analyzing data and generating recommendations...
 3. ⏳ Formatting response
 
@@ -81,7 +81,7 @@ This may take a moment. Please wait..."""
     recommendation = generate_recommendation(model, tokenizer, city, interests, reddit_data)
     generation_time = time.time() - start_time
     
-    # Format the result with metrics
+    # Format the result with metrics and verified places
     metrics = f"""
 <div class="metrics">
 Model load time: {model_load_time:.2f}s | Reddit data fetch: {reddit_time:.2f}s | Generation time: {generation_time:.2f}s
@@ -90,6 +90,16 @@ Device: {torch.cuda.get_device_name(0) if cuda_available else "CPU"}
 </div>
 """
     
+    # Add a section for verified places if any were found
+    verified_places_section = ""
+    if verified_places:
+        verified_places_section = "\n### 🗺️ Verified Places\n"
+        verified_places_section += "The following places have been verified to exist and are currently operating:\n\n"
+        for place in verified_places:
+            formatted_place = format_place_details(place)
+            if formatted_place:
+                verified_places_section += formatted_place + "\n"
+    
     final_status = f"""
 ### Generation Complete! ✨
 1. ✅ Reddit data collected
@@ -97,6 +107,8 @@ Device: {torch.cuda.get_device_name(0) if cuda_available else "CPU"}
 3. ✅ Response formatted
 
 {recommendation}
+
+{verified_places_section}
 
 {metrics}
 """

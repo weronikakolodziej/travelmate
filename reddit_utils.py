@@ -2,6 +2,8 @@ import praw
 import os
 import re
 from datetime import datetime, timedelta
+from maps_utils import initialize_gmaps_client, extract_place_names, verify_and_get_place_details, format_place_details
+from tqdm import tqdm
 
 # Default configuration - normally these would be in environment variables
 # In a production app, never hardcode these values
@@ -152,17 +154,25 @@ def fetch_reddit_data(city, interests, subreddits=["travel", "solotravel"], post
         post_limit (int): Maximum number of posts to retrieve
     
     Returns:
-        str: Concatenated relevant Reddit data
+        tuple: (str: Concatenated relevant Reddit data, list: Verified places)
     """
-    # Initialize Reddit API
+    # Initialize Reddit API and Google Maps
     reddit = initialize_reddit_api()
-    print(f"Initialized Reddit API, searching for city: {city}, interests: {interests}")
+    try:
+        gmaps = initialize_gmaps_client()
+    except ValueError as e:
+        print(f"Warning: {str(e)}. Place verification will be skipped.")
+        gmaps = None
+    
+    # Calculate the cutoff date (3 years ago)
+    cutoff_date = datetime.now() - timedelta(days=3*365)
     
     # Prepare search query
     query = f"{city} {interests}"
-    print(f"Search query: {query}")
+    print(f"\nSearching for recent posts about {city}...")
     
     all_data = []
+    verified_places = []
     
     # Search each subreddit
     for subreddit_name in subreddits:
@@ -171,47 +181,102 @@ def fetch_reddit_data(city, interests, subreddits=["travel", "solotravel"], post
             subreddit = reddit.subreddit(subreddit_name)
             
             # Search for relevant posts
-            posts = list(subreddit.search(query, limit=post_limit, sort="relevance", time_filter="year"))
-            print(f"Found {len(posts)} posts in r/{subreddit_name}")
+            posts = list(subreddit.search(query, limit=post_limit*2, sort="relevance", time_filter="year"))
             
             for post in posts:
+                # Check if post is within the last 3 years
+                post_date = datetime.fromtimestamp(post.created_utc)
+                if post_date < cutoff_date:
+                    continue
+                
                 # Check if post is relevant
                 if is_relevant(post, city):
-                    print(f"Found relevant post: {getattr(post, 'title', '[Title unavailable]')}")
                     # Extract post data
                     post_data = {
                         "title": getattr(post, "title", "[Title unavailable]"),
                         "content": getattr(post, "selftext", "").strip(),
+                        "date": post_date.strftime("%Y-%m-%d"),
                         "score": getattr(post, "score", 0),
                         "comments": []
                     }
                     
+                    # Extract and verify places from the post
+                    if gmaps:
+                        # Extract places from title and content
+                        places = extract_place_names(post_data["title"] + " " + post_data["content"])
+                        
+                        # Verify each place
+                        for place in places:
+                            details = verify_and_get_place_details(gmaps, place, city)
+                            if details:
+                                verified_places.append(details)
+                    
                     # Add top comments if available
                     if hasattr(post, "comments") and not isinstance(post, dict):
-                        post.comments.replace_more(limit=0)  # Only get top-level comments
-                        for comment in post.comments[:3]:  # Get top 3 comments
+                        post.comments.replace_more(limit=0)
+                        for comment in post.comments[:3]:
                             if hasattr(comment, "body") and len(comment.body.strip()) > 15:
-                                post_data["comments"].append(comment.body.strip())
-                    elif isinstance(post, dict) and "comments" in post:
-                        # For mock data
-                        post_data["comments"] = post["comments"][:3]
+                                comment_text = comment.body.strip()
+                                post_data["comments"].append(comment_text)
+                                
+                                # Extract and verify places from comments
+                                if gmaps:
+                                    places = extract_place_names(comment_text)
+                                    for place in places:
+                                        details = verify_and_get_place_details(gmaps, place, city)
+                                        if details:
+                                            verified_places.append(details)
                     
                     all_data.append(post_data)
-                else:
-                    print(f"Skipping irrelevant post: {getattr(post, 'title', '[Title unavailable]')}")
+                    
+                    # Break if we have enough recent, relevant posts
+                    if len(all_data) >= post_limit:
+                        break
+            
         except Exception as e:
             print(f"Error fetching data from r/{subreddit_name}: {str(e)}")
     
-    print(f"\nTotal relevant posts found: {len(all_data)}")
-    
     # If we couldn't find relevant data
     if not all_data:
-        print("No relevant data found for the query")
-        return ""
+        return "", []
+    
+    # Remove duplicate places
+    verified_places = [dict(t) for t in {tuple(d.items()) for d in verified_places}]
     
     # Format the data for the model
-    formatted_data = format_reddit_data(all_data)
-    return formatted_data
+    formatted_data = format_reddit_data(all_data, verified_places)
+    return formatted_data, verified_places
+
+def format_reddit_data(posts, verified_places):
+    """Format Reddit posts and comments for the model input"""
+    formatted_text = ""
+    
+    # First, add the verified places section
+    if verified_places:
+        formatted_text += "VERIFIED PLACES:\n"
+        for place in verified_places:
+            formatted_text += format_place_details(place) + "\n"
+        formatted_text += "\n---\n\n"
+    
+    # Then add the Reddit posts
+    for i, post in enumerate(posts):
+        formatted_text += f"POST {i+1} ({post['date']}): {post['title']}\n"
+        
+        # Add post content if it exists and isn't too long
+        if post['content'] and len(post['content']) > 10:
+            # Truncate very long posts
+            content = post['content'][:1000] + "..." if len(post['content']) > 1000 else post['content']
+            formatted_text += f"Content: {content}\n\n"
+        
+        # Add comments if they exist
+        if post['comments']:
+            formatted_text += "Top comments:\n"
+            for comment in post['comments']:
+                formatted_text += f"- {comment}\n"
+        
+        formatted_text += "\n---\n\n"
+    
+    return formatted_text
 
 def is_relevant(post, city):
     """Check if a post is relevant to the city"""
@@ -228,26 +293,3 @@ def is_relevant(post, city):
     
     # Check if city is mentioned in title or content
     return city_lower in title or city_lower in content
-
-def format_reddit_data(posts):
-    """Format Reddit posts and comments for the model input"""
-    formatted_text = ""
-    
-    for i, post in enumerate(posts):
-        formatted_text += f"POST {i+1}: {post['title']}\n"
-        
-        # Add post content if it exists and isn't too long
-        if post['content'] and len(post['content']) > 10:
-            # Truncate very long posts
-            content = post['content'][:1000] + "..." if len(post['content']) > 1000 else post['content']
-            formatted_text += f"Content: {content}\n\n"
-        
-        # Add comments if they exist
-        if post['comments']:
-            formatted_text += "Top comments:\n"
-            for j, comment in enumerate(post['comments']):
-                formatted_text += f"- {comment}\n"
-        
-        formatted_text += "\n---\n\n"
-    
-    return formatted_text
