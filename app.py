@@ -65,7 +65,26 @@ def process_request(city, interests, subreddits=["travel", "solotravel"], post_l
     reddit_time = time.time() - start_time
     
     if not reddit_data:
-        return f"No relevant information found for {city} on Reddit. Please try another city or interests."
+        return f"""### No Results Found 😕
+
+We couldn't find any relevant information about **{city}** that matches your interests in **{interests}**. This could be because:
+
+1. The posts are more than 3 years old
+2. The location might be spelled differently
+3. There might not be recent discussions about this specific location
+
+**Try these tips:**
+- Check the spelling of the location
+- Use a more general search term
+- Try a more popular nearby city
+- Adjust your interests to be more general
+- Try different subreddits in the Advanced Options
+
+Current search settings:
+- Subreddits: {', '.join(subreddits)}
+- Time range: Last 3 years
+- Search terms: "{city}" + "{interests}"
+"""
     
     # Generate recommendations using the model
     status_msg = f"""

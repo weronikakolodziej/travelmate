@@ -2,13 +2,64 @@ import os
 import googlemaps
 from datetime import datetime
 import re
+from typing import List, Dict, Optional, Any
+import time
 
-def initialize_gmaps_client():
-    """Initialize and return the Google Maps client"""
-    api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+def initialize_gmaps_client() -> googlemaps.Client:
+    """Initialize the Google Maps client"""
+    api_key = os.getenv('GOOGLE_MAPS_API_KEY')
     if not api_key:
-        raise ValueError("Google Maps API key not found in environment variables")
+        raise ValueError("GOOGLE_MAPS_API_KEY environment variable not set")
     return googlemaps.Client(key=api_key)
+
+def search_places_directly(gmaps: googlemaps.Client, city: str, interests: List[str], limit: int = 5) -> List[Dict[str, Any]]:
+    """
+    Search for places directly on Google Maps based on interests.
+    
+    Args:
+        gmaps: Google Maps client
+        city: City/region to search in
+        interests: List of user interests
+        limit: Maximum number of places per interest
+    
+    Returns:
+        List of verified places
+    """
+    verified_places = []
+    
+    for interest in interests:
+        try:
+            # Search for places
+            search_query = f"{interest} in {city}"
+            places_result = gmaps.places(search_query)
+            
+            # Process results
+            for place in places_result['results'][:limit]:
+                # Get detailed information
+                place_id = place['place_id']
+                details = gmaps.place(place_id, fields=[
+                    'name', 'formatted_address', 'website', 'rating',
+                    'formatted_phone_number', 'opening_hours', 'types', 'url'
+                ])['result']
+                
+                # Only include places with good ratings
+                if 'rating' in details and details['rating'] >= 4.0:
+                    verified_places.append({
+                        'name': details.get('name', ''),
+                        'address': details.get('formatted_address', ''),
+                        'maps_url': details.get('url', ''),
+                        'website': details.get('website', None),
+                        'rating': details.get('rating', 0.0),
+                        'phone': details.get('formatted_phone_number', None),
+                        'is_open': details.get('opening_hours', {}).get('open_now', None),
+                        'place_type': details.get('types', [])[0] if details.get('types') else None
+                    })
+        
+        except Exception as e:
+            print(f"Error searching for {interest} in {city}: {str(e)}")
+            continue
+    
+    return verified_places
 
 def extract_place_names(text):
     """Extract potential place names from text using some common patterns"""
@@ -33,48 +84,54 @@ def extract_place_names(text):
     
     return list(set(places))  # Remove duplicates
 
-def verify_and_get_place_details(gmaps_client, place_name, city):
+def verify_and_get_place_details(gmaps: googlemaps.Client, place_name: str, city: str) -> Optional[Dict[str, Any]]:
     """
-    Verify a place exists on Google Maps and get its details.
-    Returns None if the place cannot be verified.
+    Verify if a place exists and get its details from Google Maps.
+    
+    Args:
+        gmaps: Google Maps client
+        place_name: Name of the place to verify
+        city: City/region for context
+    
+    Returns:
+        Dict with place details if found and verified, None otherwise
     """
     try:
-        # Search for the place in the specified city
+        # Search for the place
         search_query = f"{place_name}, {city}"
-        result = gmaps_client.places(
-            search_query,
-            type=['establishment', 'point_of_interest', 'tourist_attraction'],
-            language='en'
-        )
+        places_result = gmaps.places(search_query)
         
-        if not result['results']:
+        if not places_result['results']:
             return None
         
-        place = result['results'][0]
+        # Get the first result
+        place = places_result['results'][0]
         
         # Get detailed information
-        place_details = gmaps_client.place(place['place_id'], fields=[
-            'name', 'formatted_address', 'url', 'website', 'rating',
-            'formatted_phone_number', 'opening_hours', 'business_status'
+        place_id = place['place_id']
+        details = gmaps.place(place_id, fields=[
+            'name', 'formatted_address', 'website', 'rating',
+            'formatted_phone_number', 'opening_hours', 'types', 'url'
         ])['result']
         
-        # Check if the place is permanently closed
-        if place_details.get('business_status') == 'CLOSED_PERMANENTLY':
+        # Check if it's a valid place (has minimum rating of 4.0)
+        if 'rating' not in details or details['rating'] < 4.0:
             return None
-            
-        # Create a clean place details dictionary
-        return {
-            'name': place_details.get('name', ''),
-            'address': place_details.get('formatted_address', ''),
-            'maps_url': place_details.get('url', ''),
-            'website': place_details.get('website', ''),
-            'rating': place_details.get('rating', 'No rating'),
-            'phone': place_details.get('formatted_phone_number', ''),
-            'is_open': place_details.get('opening_hours', {}).get('open_now', None)
-        }
         
+        # Format the response
+        return {
+            'name': details.get('name', place_name),
+            'address': details.get('formatted_address', ''),
+            'maps_url': details.get('url', ''),
+            'website': details.get('website', None),
+            'rating': details.get('rating', 0.0),
+            'phone': details.get('formatted_phone_number', None),
+            'is_open': details.get('opening_hours', {}).get('open_now', None),
+            'place_type': details.get('types', [])[0] if details.get('types') else None
+        }
+    
     except Exception as e:
-        print(f"Error verifying place '{place_name}': {str(e)}")
+        print(f"Error verifying place {place_name}: {str(e)}")
         return None
 
 def format_place_details(place_details):
@@ -94,5 +151,7 @@ def format_place_details(place_details):
     formatted += f"🗺️ [View on Google Maps]({place_details['maps_url']})\n"
     if place_details['website']:
         formatted += f"🌐 [Official Website]({place_details['website']})\n"
+    if 'place_type' in place_details:
+        formatted += f"🏷️ Type: {place_details['place_type'].replace('_', ' ').title()}\n"
     
     return formatted 
