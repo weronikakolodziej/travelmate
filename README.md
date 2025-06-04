@@ -57,12 +57,53 @@ TravelMate is an intelligent travel recommendation system that combines Reddit d
 ### Google Maps API Setup
 1. Go to https://console.cloud.google.com/
 2. Create a new project or select an existing one
-3. Enable the following APIs:
-   - Places API
-   - Maps JavaScript API
-   - Geocoding API
-4. Create credentials (API key)
-5. (Optional) Restrict the API key to specific APIs and IP addresses
+3. Enable the following APIs (required):
+   - **Places API (New Backend)**
+     - Choose this over the legacy Places API
+     - More reliable and feature-rich
+     - Better performance and updated pricing
+     - Includes all features we need:
+       * Place Search
+       * Place Details
+       * Place Photos
+       * Opening Hours
+     - Note: The legacy "Places API" is being phased out
+   
+   - **Geocoding API**
+     - Used to convert city names to coordinates
+     - Helps with location-based searches
+     - Required for accurate place matching
+   
+   Optional but recommended:
+   - **Maps JavaScript API**
+     - Enables generation of direct Google Maps links
+     - Provides better place previews
+     - Used for map URLs in recommendations
+
+4. Create credentials:
+   - Click "Create Credentials" → "API Key"
+   - A new API key will be generated
+   - Copy this key for your environment variables
+
+5. (Recommended) Restrict the API key:
+   - Go to the API key settings
+   - Under "API restrictions", select the APIs you enabled
+   - Under "Application restrictions", consider limiting to your IP
+   - Set appropriate quotas to avoid unexpected charges
+
+Note: The Places API (New Backend) has the following pricing structure:
+- Basic Place Search: $0.017 per request (first 100k requests/month)
+- Basic Place Details: $0.017 per request (first 100k requests/month)
+- Typical usage for TravelMate:
+  * ~1-2 searches per place verification
+  * ~1 detail request per verified place
+  * Recommended monthly budget: Set alerts for >1000 requests
+
+For development and testing:
+- Start with the default quotas
+- Monitor usage in Google Cloud Console
+- Enable billing alerts
+- Consider using the $300 free credit from Google Cloud
 
 ### Mistral AI Setup
 1. Visit https://mistral.ai/
